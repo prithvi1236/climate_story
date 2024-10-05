@@ -8,8 +8,11 @@ app = Flask(__name__)
 # Load the datasets
 co2_dataset_path = 'CO2_Emissions_1960-2018.csv'
 methane_dataset_path = 'methane_hist_emissions.csv'
+pivoted_dataset_path = 'pivoted_dataset.csv'
+
 df_co2 = pd.read_csv(co2_dataset_path)
 df_methane = pd.read_csv(methane_dataset_path)
+df_pivoted = pd.read_csv(pivoted_dataset_path)
 
 @app.route('/')
 def home():
@@ -19,13 +22,14 @@ def home():
 def plot_graph():
     country = request.form.get('country')
 
-    # Check if country is available in both datasets
+    # Check if the country is available in both datasets
     co2_available = country in df_co2['Country Name'].values
     methane_available = country in df_methane['Country'].values
+    pivoted_available = country in df_pivoted['country'].values
 
-    if not co2_available and not methane_available:
-        return jsonify({"error": "Country not found in either dataset"}), 404
-    
+    if not (co2_available or methane_available or pivoted_available):
+        return jsonify({"error": "Country not found in any dataset"}), 404
+
     insights = {}
     images = []
 
@@ -33,7 +37,7 @@ def plot_graph():
     if co2_available:
         co2_data = df_co2[df_co2['Country Name'] == country].iloc[0, 1:]  # Exclude the country column
         img_co2 = plot_emissions(co2_data, country, "CO2 Emissions")
-        images.append({'type': 'CO2', 'url': '/co2_image'})
+        images.append({'type': 'CO2', 'url': '/co2_image?country=' + country})
 
         insights['CO2'] = {
             "Country": country,
@@ -47,7 +51,7 @@ def plot_graph():
     if methane_available:
         methane_data = df_methane[df_methane['Country'] == country].iloc[0, 1:]  # Exclude the country column
         img_methane = plot_emissions(methane_data, country, "Methane Emissions")
-        images.append({'type': 'Methane', 'url': '/methane_image'})
+        images.append({'type': 'Methane', 'url': '/methane_image?country=' + country})
 
         insights['Methane'] = {
             "Country": country,
@@ -55,6 +59,20 @@ def plot_graph():
             "Max Value": methane_data.max(),
             "Min Value": methane_data.min(),
             "Average Value": methane_data.mean()
+        }
+    
+    # Plot from pivoted dataset if available
+    if pivoted_available:
+        pivoted_data = df_pivoted[df_pivoted['country'] == country].iloc[0, 1:]  # Exclude the country column
+        img_pivoted = plot_emissions(pivoted_data, country, "Data from Pivoted Dataset")
+        images.append({'type': 'Pivoted Data', 'url': '/pivoted_image?country=' + country})
+
+        insights['Pivoted Data'] = {
+            "Country": country,
+            "Years Covered": list(pivoted_data.index),
+            "Max Value": pivoted_data.max(),
+            "Min Value": pivoted_data.min(),
+            "Average Value": pivoted_data.mean()
         }
 
     # Return both images and insights as JSON
@@ -98,6 +116,17 @@ def return_methane_image():
 
     methane_data = df_methane[df_methane['Country'] == country].iloc[0, 1:]
     img = plot_emissions(methane_data, country, "Methane Emissions")
+    
+    return send_file(img, mimetype='image/png')
+
+@app.route('/pivoted_image')
+def return_pivoted_image():
+    country = request.args.get('country')
+    if not country or country not in df_pivoted['country'].values:
+        return jsonify({"error": "Country not found in the pivoted dataset"}), 404
+    
+    pivoted_data = df_pivoted[df_pivoted['country'] == country].iloc[0, 1:]
+    img = plot_emissions(pivoted_data, country, "Data from Pivoted Dataset")
     
     return send_file(img, mimetype='image/png')
 
